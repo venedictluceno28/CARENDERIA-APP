@@ -1,0 +1,445 @@
+CARENDERIA-APP CURRENT PRODUCT SPECIFICATION
+
+PRODUCT OVERVIEW
+
+CARENDERIA-APP is a mobile-first web application for a Philippine carenderia. It remains accessible through a web browser, but both customers and the admin/owner will primarily use mobile phones.
+
+The admin experience is intended for a non-technical owner and must prioritize simplicity, large readable controls, clear actions, easy navigation, obvious feedback, and minimal unnecessary complexity.
+
+The future visual direction is glassmorphism over a colorful blue-based gradient. Glass effects must not reduce readability or usability.
+
+
+USER ROLES AND ACCESS
+
+Customer:
+- Guest ordering is a primary supported flow.
+- A customer does not need an account to place an order.
+- Customer login/accounts are optional future functionality and are not required for the initial implementation.
+
+Admin/owner:
+- The deployed admin area must eventually require authentication and must not be publicly accessible.
+- The exact authentication method will be selected later. Supabase Auth may be evaluated during the authentication/architecture phase.
+
+
+FRONT PAGE
+
+- On entering the website, the customer can choose to order immediately or scroll/browse the front page to learn about the carenderia.
+- Ordering immediately leads to the ORDER page.
+- The exact front-page content and presentation of this choice remain to be designed.
+
+
+ADMIN MODULE
+
+ADMIN DASHBOARD
+
+The dashboard provides simple, obvious actions for:
+- ULAM POST
+- ULAM PHOTOS
+- MESSAGE
+- ADDRESS BOOK
+- MANUAL ORDER
+- TOTAL ORDERS FOR TODAY
+- SETTINGS
+
+
+ULAM PHOTOS — REUSABLE MENU CATALOG
+
+ULAM PHOTOS is the owner's reusable food/menu catalog. Despite its current name, it contains items from all three categories:
+- ULAM
+- DESSERTS
+- EXTRAS
+
+Each reusable catalog item conceptually contains:
+- Name
+- Food price
+- Category
+- Photo
+- Internal delivery allocation
+
+The internal delivery allocation is operational/accounting information. It is separate from the displayed food price and must eventually be configurable/data-driven rather than permanently hard-coded.
+
+Internal DF is item-specific. ULAM, DESSERTS, and EXTRAS may each contribute Internal DF; no category-wide default should be assumed unless separately confirmed.
+
+Deleting or changing a catalog item must not change published-menu snapshots or historical orders. Exact catalog hiding and deletion controls remain unresolved.
+
+
+ULAM POST — TODAY'S PUBLISHED MENU
+
+ULAM POST is the menu published for customers. The owner prepares it by selecting reusable food items from ULAM PHOTOS.
+
+The product uses three distinct conceptual layers:
+
+Reusable Catalog -> Published Menu -> Order
+
+The published menu snapshots the relevant item information needed for that menu. Later changes to a reusable catalog item must not retroactively alter an already published menu.
+
+Confirmed menu rules:
+- Only one active menu post exists at a time.
+- A menu post has a maximum lifetime of 24 hours.
+- When the active menu reaches 24 hours, it expires automatically and becomes unavailable for new customer ordering.
+- The admin can manually end/deactivate the active menu before it expires.
+- The owner can delete the menu post.
+- The menu post must contain an image.
+- Menu items are categorized as ULAM, DESSERTS, and EXTRAS.
+- The published menu is what customers see on the ORDER page.
+- A published item can be marked SOLD OUT without deleting it from the menu or reusable catalog.
+- A SOLD OUT item remains visible to customers but cannot be bought or added to the cart.
+- The admin can restore a sold-out item's availability.
+- If a published item becomes SOLD OUT while already in a cart, final checkout must be blocked until the customer removes or otherwise resolves that item.
+
+Historical menu and order information must survive menu expiration or manual deactivation. Reusable catalog items must not be deleted by menu expiration/deactivation. Historical orders must also survive menu deletion, catalog item deletion, and catalog price changes.
+
+Still unresolved:
+- The exact customer-facing state after menu expiry/deactivation.
+- Whether editing or republishing changes the original 24-hour expiry time.
+- Whether a menu can be scheduled.
+
+
+MESSAGE
+
+- Customers and the admin can exchange text messages.
+- Customers can send photos, including an external online-payment receipt/screenshot.
+- Messaging supports reactions.
+- A guest conversation is associated with the customer's order, but the readable order code is for support/identification and is not an authorization secret.
+- Successful online checkout issues a separate high-entropy guest token; only a secure token hash is retained by the backend.
+- A guest can actively use the order-linked chat for approximately 24 hours from Order Created At.
+- The guest token remains valid only for that same approximately 24-hour order-linked guest window.
+- Guest Chat Expiry is conceptually Order Created At + 24 hours.
+- Sending a new message does not reset or extend the guest-chat expiry.
+- V1 has no automated guest-token recovery. A customer who loses access may contact the admin through another channel using the human-readable order code.
+- After the guest window expires, the customer cannot continue using that chat as a permanently open conversation.
+- Chat expiry does not remove the associated order.
+- Important online-payment evidence may remain associated with the order for later admin inspection after guest chat access expires.
+- Admin access to retained order records/evidence does not have to match the customer's guest-access duration.
+- Payment evidence remains private and is retained for 30 days from Order Created At. After 30 days it is eligible for deletion while the historical order remains.
+
+Still unresolved:
+- Whether an expired conversation is read-only or inaccessible to the customer.
+- Exact retention/deletion behavior for ordinary text, photos, and reactions.
+- Payment-evidence cleanup scheduling, file limits, and detailed storage controls beyond the confirmed private 30-day retention rule.
+- Logged-in customer message retention if customer accounts are added later.
+
+
+ADDRESS BOOK
+
+The address book replaces the current paper-based address system.
+
+Each address record currently contains:
+- Name
+- Exact address
+
+The admin can:
+- Add an address.
+- Edit an address.
+- Search addresses.
+
+Duplicate handling, deletion, address history, and additional contact details remain unresolved.
+
+
+MANUAL ORDER
+
+The admin uses MANUAL ORDER to enter orders received through other platforms or non-online channels.
+
+Fixed information:
+- Customer name
+- Full address
+- Delivery fee/customer-facing delivery charge
+
+Dynamic order items:
+- Item name
+- Unit price
+- Quantity
+- Item subtotal
+
+Payment classification:
+- CASH
+- ONLINE PAYMENT
+
+Flow:
+1. The admin enters the order.
+2. The admin selects CASH or ONLINE PAYMENT.
+3. The admin selects PROCEED.
+4. A manual-order confirmation/receipt displays the customer name, address, ordered food, quantities, prices, delivery charge, and total payment.
+5. A PRINT action will eventually print the receipt through a Bluetooth thermal printer.
+
+Manual orders must appear in TOTAL ORDERS FOR TODAY. Where relevant, they follow the same transaction-history rules as online orders: the admin can edit them, they may be cancelled, cancellation does not delete them, cancelled manual orders are excluded from active totals, and minimum creation/edit/cancellation metadata is preserved.
+
+Do not assume guest messaging behavior for a manual order that did not originate from a customer guest session. The payment-evidence flow for manual ONLINE PAYMENT orders remains unresolved.
+
+
+TOTAL ORDERS FOR TODAY
+
+This area provides a simple daily accounting/order overview.
+
+- It includes online/customer orders and manual orders.
+- It shows total sales, total delivery fees/charges, and total orders.
+- Its main searchable, tappable list shows customer name and grand total.
+- The list is ordered by order creation time, not alphabetically.
+- Tapping an order opens complete order details.
+- The admin may edit essentially the complete order, including customer details, items, quantities, unit prices, item totals, payment method, customer delivery charge, Internal DF, rider-related values, and other required transaction fields.
+- V1 does not require a rigid multi-step restaurant status workflow such as NEW -> CONFIRMED -> PREPARING -> OUT FOR DELIVERY -> COMPLETED.
+- Minimal bookkeeping distinguishes active/non-cancelled orders from cancelled orders; this must not become a complex status workflow.
+- Cancelled orders remain visible and inspectable in TOTAL ORDERS FOR TODAY and must be clearly identifiable as cancelled.
+- Cancelled orders are excluded from today's sales total, customer delivery-fee total, calculated rider total, final rider payout total, and active order count if one is shown.
+- Cancellation must not delete or rewrite the order as though it never existed.
+- Preserve the order identity/code, customer, ordered items, original transaction values, creation time, cancellation state, and cancellation time when available.
+- Only the admin/owner can cancel an order in V1. Customers may request cancellation, but they do not directly change cancellation state.
+- The admin can restore a cancelled order to active bookkeeping state. A restored order participates in active totals according to its current values.
+- Cancellation may include an optional short free-text reason; a reason is not required.
+- Full editing is allowed, but editing or reconciliation must not silently corrupt the original transaction history.
+- At minimum, conceptually preserve Created At, Last Edited At, and Cancelled At when applicable.
+- Preserve an original order snapshot separately from the current editable order state.
+- When an edit changes a monetary input, automatically recalculate every affected derived total. The admin must not manually recalculate arithmetic.
+- A full change-by-change audit log is not required for V1.
+- Daily reporting uses Asia/Manila local time from 00:00:00 through 23:59:59.
+
+Still unresolved:
+- Exact calculation dependencies, rounding rules, and data-model implementation.
+- Whether editor identity is recorded beyond the required original snapshot and timestamps.
+- Exact handling of cancellation/restoration timestamps and prior cancellation metadata.
+- How cancellation after verified external payment or completed rider reconciliation is handled.
+- Whether a separate cancelled-order count is needed.
+- What is included in accounting totals.
+
+
+CONCEPTUAL TRANSACTION METADATA
+
+Without defining a database schema, each order conceptually requires:
+- Order code
+- Source: online or manual
+- Created At
+- Last Edited At
+- Cancelled state
+- Cancelled At when cancelled
+- Optional cancellation reason
+- Payment method
+- ONLINE PAYMENT verification state when applicable
+- Verified At when an online payment is verified
+- Original order snapshot
+- Current editable order state
+
+The exact data structures, field types, constraints, and storage strategy belong to a later architecture phase.
+
+
+SETTINGS AND BRANDING
+
+The owner can eventually configure:
+- Carenderia name
+- Carenderia logo
+- Font-size preference
+- Logout
+
+A default logo placeholder is shown when no custom logo exists.
+
+Logo formats/limits, font-size choices, and settings persistence remain to be decided.
+
+
+CUSTOMER MODULE
+
+ORDER PAGE
+
+- The ORDER page must be direct and easy to use.
+- Customers see the active published menu grouped into ULAM, DESSERTS, and EXTRAS.
+- Each food item is displayed as a card with food information, BUY, and ADD TO CART actions.
+- BUY takes the selected item directly into the address/order-completion flow.
+- ADD TO CART adds the item to the cart.
+- A CART action is available from the order interface.
+- A MESSAGE action leads to customer/admin messaging.
+
+
+QUANTITIES AND ORDER ITEM SNAPSHOTS
+
+- Orders support quantities and multiple units of the same item.
+- An order item conceptually preserves the item information, category, quantity, unit price, and item subtotal that applied when the order was created.
+- Item subtotal equals quantity multiplied by unit price.
+- Catalog or menu changes must not retroactively alter historical orders.
+
+Example:
+Pork Adobo
+₱80 x 2 = ₱160
+
+The exact quantity controls, duplicate-cart behavior, and quantity limits belong to later product/design decisions.
+
+
+CART
+
+The customer can:
+- View selected items.
+- Remove items.
+- Continue ordering.
+- Proceed to checkout.
+
+The cart's PROCEED action leads to the address/delivery page.
+
+Immediately before creating an order, the cart must be revalidated against the current active published menu. Revalidation checks that:
+- The menu is still active and has not expired or been manually deactivated.
+- Each item still belongs to the valid published menu.
+- No item is SOLD OUT.
+- Current published-menu prices are used.
+- Current relevant delivery data is used.
+
+If an item becomes SOLD OUT, checkout is blocked until the customer removes or otherwise resolves the unavailable item. The final UI must identify the affected item clearly.
+
+If the menu expires or is manually deactivated before order creation, checkout stops and no order is created against that inactive menu. The customer is informed that the menu is no longer active.
+
+If an active published-menu price changes while an item is in the cart, final validation uses the current valid published-menu price, recalculates the total, and requires the customer to review the updated total before completing the order. The system must not silently charge a changed amount.
+
+A raw reusable-catalog price change does not automatically rewrite the active published menu or historical orders.
+
+
+ADDRESS / DELIVERY / CHECKOUT
+
+The customer provides:
+- Name
+- Exact address
+- Delivery area classification
+- Payment method: CASH or ONLINE PAYMENT
+
+The page must clearly state that the store is located at:
+
+Phase 1 Block 44 Lot 54
+Marycris Complex
+Pasong Camachile 2
+General Trias, Cavite
+
+Nearby promotional areas:
+- Marycris Complex
+- Wellington Place
+- Elliston Place
+
+The customer needs a simple, clear way to choose one of the three nearby areas or "Outside these areas." The exact mobile control is not yet selected. The UI must make the additional ₱20 far-area charge difficult to misunderstand.
+
+The page may explain a simple customer promotion such as "2 ULAM = FREE DELIVERY," but it must not imply that only ULAM can qualify. The authoritative calculation uses the accumulated Internal DF of all applicable cart items. Outside-area customers still pay the far-area charge after qualifying for a free base charge.
+
+
+DELIVERY BUSINESS RULES
+
+Delivery-related money uses three separate concepts:
+
+1. Internal delivery allocation
+   - Operational amount associated with catalog/order items.
+   - Not shown as part of the food price.
+
+2. Customer-facing delivery charge
+   - Amount shown to and charged to the customer.
+
+3. Additional far-area charge
+   - Fixed ₱20 charge for an address outside the nearby promotional areas.
+
+Internal DF rules:
+- Every applicable catalog item can have its own configurable Internal DF.
+- ULAM, DESSERTS, and EXTRAS may contribute Internal DF.
+- Internal DF is multiplied by item quantity and accumulated across the cart.
+- Internal DF is separate from the customer-visible food price.
+- A food priced at ₱80 with ₱10 Internal DF is displayed as ₱80, not ₱90.
+- Published menus and orders must preserve the Internal DF values that applied when they were created.
+
+Conceptual formula:
+
+Internal DF Total = SUM(Item Internal DF x Quantity)
+
+Base Customer Delivery Charge:
+- If Internal DF Total is greater than or equal to ₱20: ₱0.
+- If Internal DF Total is less than ₱20: fixed ₱15.
+
+The ₱15 charge is not the difference needed to reach ₱20. For example, an Internal DF Total of ₱18 still produces a ₱15 base charge, not ₱2.
+
+Far-Area Charge:
+- Marycris Complex, Wellington Place, or Elliston Place: ₱0.
+- Outside those areas: ₱20.
+
+Final Customer Delivery Charge = Base Customer Delivery Charge + Far-Area Charge
+
+Confirmed examples:
+- ₱5 Internal DF, nearby: ₱15 final customer delivery charge.
+- ₱18 Internal DF, nearby: ₱15 final customer delivery charge.
+- ₱20 or more Internal DF, nearby: FREE / ₱0 final customer delivery charge.
+- ₱5 or ₱18 Internal DF, outside area: ₱35 final customer delivery charge.
+- ₱20 or more Internal DF, outside area: ₱20 final customer delivery charge.
+
+"2 ULAM = FREE DELIVERY" may be used as customer-facing promotional wording when common ULAM items carry ₱10 Internal DF each. It is not the underlying system algorithm. A DESSERT or EXTRA can also help reach or independently reach the ₱20 threshold according to its configured Internal DF.
+
+Rider accounting:
+- Per-order calculated rider amount equals Internal DF Total plus Final Customer Delivery Charge.
+- Cancelled orders do not contribute to daily calculated rider totals.
+- Daily calculated rider amount is the sum of calculated rider amounts for active/non-cancelled orders in the Manila business date.
+- Daily manual rider adjustment: a separate increase or reduction recorded during end-of-day reconciliation.
+- Daily final rider amount: the daily calculated rider amount plus the daily manual adjustment.
+- Per-order rider adjustment is not required in V1.
+- Rider adjustments must not rewrite historical food prices, quantities, original customer delivery charges, or customer grand totals.
+
+Formula summary:
+Calculated Rider Amount = Internal DF Total + Final Customer Delivery Charge
+Daily Final Rider Amount = Daily Calculated Rider Amount + Manual Daily Adjustment
+
+Whether a daily adjustment needs a note or additional authorization metadata remains unresolved.
+
+
+CONFIRMATION AND COMPLETE ORDER
+
+- Confirmation displays customer information, address, delivery information, ordered items, quantities, prices, payment method, and relevant totals.
+- The customer can double-check the order.
+- COMPLETE ORDER creates the order and displays the receipt.
+
+
+ORDER RECEIPT AND CODE
+
+After order completion, the system displays a receipt containing:
+- Customer name
+- Ordered items
+- Relevant prices/totals
+- System-generated order code
+
+The code is especially important for guest customers. A guest can send their name and order code to the admin so the admin can identify the order. Actual guest authorization uses the separate high-entropy guest token, never the readable code alone.
+
+The code must be unique enough for the application's intended use, human-readable enough for conversation, and associated with the correct order. Its exact format, length, generation algorithm, uniqueness strategy, expiry, and lost-code handling remain unresolved.
+
+
+PAYMENT BEHAVIOR
+
+The first version does not use an integrated payment gateway. Do not integrate GCash APIs, Maya APIs, card processors, or another payment-gateway API.
+
+Payment method is an order classification:
+- CASH
+- ONLINE PAYMENT
+
+For ONLINE PAYMENT:
+1. The customer completes the order.
+2. Payment happens externally.
+3. The customer contacts the admin through application messaging.
+4. The customer sends a payment receipt/screenshot.
+5. The admin reviews the image.
+6. The admin may manually mark the online payment as VERIFIED.
+
+ONLINE PAYMENT verification has only these V1 states:
+- Not Verified
+- Verified
+
+The application must not claim automatic payment verification. Do not add payment states such as Processing, Failed, Refunded, or Disputed without a later confirmed requirement.
+
+CASH orders do not use this online-payment verification workflow unless a later business rule explicitly requires it.
+
+The admin may reverse an accidental ONLINE PAYMENT verification by changing Verified back to Not Verified. When an online payment is marked Verified, preserve Verified At conceptually.
+
+Exact handling of the previous Verified At value after reversal and whether verifier identity/history is retained remain data-model decisions. Payment evidence remains private, may remain available to the admin after guest chat expiry, and is retained for 30 days from Order Created At before becoming eligible for deletion. Automatic cleanup timing remains an implementation decision.
+
+
+BLUETOOTH THERMAL PRINTING
+
+The owner has ordered a Bluetooth thermal printer, but its exact model is not yet known.
+
+Receipt generation must remain independent from printer integration:
+
+Order -> Receipt data -> Receipt renderer -> Printing integration/adapter -> Bluetooth thermal printer
+
+Do not assume that a browser Bluetooth API will work and do not choose a protocol before the physical printer is reviewed.
+
+When the printer arrives, review:
+- Brand
+- Model
+- Protocol
+- Supported phone operating systems
+- Pairing method
+- Documentation
+
+Pairing, retry, failure, and fallback-printing behavior remain unresolved.
