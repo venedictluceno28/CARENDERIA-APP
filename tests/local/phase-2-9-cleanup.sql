@@ -1,0 +1,43 @@
+delete from public.message_attachments
+where order_id in (
+  '99500000-0000-4000-8000-000000000001',
+  '99500000-0000-4000-8000-000000000002',
+  '99500000-0000-4000-8000-000000000003'
+);
+
+delete from public.messages
+where conversation_id in (
+  select id from public.conversations where order_id in (
+    '99500000-0000-4000-8000-000000000001',
+    '99500000-0000-4000-8000-000000000002',
+    '99500000-0000-4000-8000-000000000003'
+  )
+);
+
+delete from public.conversations
+where order_id in (
+  '99500000-0000-4000-8000-000000000001',
+  '99500000-0000-4000-8000-000000000002',
+  '99500000-0000-4000-8000-000000000003'
+);
+
+delete from public.order_items
+where order_id in (
+  '99500000-0000-4000-8000-000000000001',
+  '99500000-0000-4000-8000-000000000002',
+  '99500000-0000-4000-8000-000000000003'
+);
+
+delete from public.orders
+where id in (
+  '99500000-0000-4000-8000-000000000001',
+  '99500000-0000-4000-8000-000000000002',
+  '99500000-0000-4000-8000-000000000003'
+);
+
+delete from public.published_menu_items
+where id = '99400000-0000-4000-8000-000000000002';
+delete from public.published_menus
+where id = '99400000-0000-4000-8000-000000000001';
+update public.admin_profiles set is_active = false
+where user_id = '99500000-0000-4000-8000-000000000099';

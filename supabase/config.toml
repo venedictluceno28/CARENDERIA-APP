@@ -28,14 +28,18 @@ file_size_limit = "50MiB"
 [auth]
 enabled = true
 site_url = "http://127.0.0.1:5173"
-additional_redirect_urls = ["http://localhost:5173"]
+additional_redirect_urls = ["http://localhost:5173", "http://192.168.18.8:5173"]
 jwt_expiry = 3600
 enable_signup = false
 
 [auth.email]
-enable_signup = false
+enable_signup = true
 double_confirm_changes = true
 enable_confirmations = false
+
+[auth.rate_limit]
+sign_in_sign_ups = 10
+token_refresh = 120
 
 [edge_runtime]
 enabled = true
@@ -44,3 +48,21 @@ inspector_port = 8083
 
 [analytics]
 enabled = false
+
+[functions.checkout]
+verify_jwt = false
+
+[functions.guest-access]
+verify_jwt = false
+
+[functions.admin-messaging]
+verify_jwt = false
+
+[functions.admin-catalog-image]
+verify_jwt = false
+
+[functions.admin-menu-publish]
+verify_jwt = false
+
+[functions.retention-cleanup]
+verify_jwt = false

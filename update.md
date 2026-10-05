@@ -1,858 +1,584 @@
-# CARENDERIA-APP — Phase 1.0
-## Supabase Foundation & Initial Schema Migration
-
+CARENDERIA-APP — Phase 2.9.1
+Realtime Messaging, Messenger-Style UX, Contrast Audit & Admin Dashboard State Cleanup
 Continue working on the existing CARENDERIA-APP project.
-
-Phase 0.1 through Phase 0.4 are complete.
-
-The conceptual domain model and proposed Supabase physical schema/security design have already been documented.
-
-This task begins the FIRST implementation phase.
-
-Before changing anything, read the relevant documentation, especially:
-
-- `Documentation/TINDAHAN MODULE.txt`
-- `Documentation/MARKDOWN/PHASE-0.3-DOMAIN-DATA-MODEL.md`
-- `Documentation/MARKDOWN/PHASE-0.4-SUPABASE-SCHEMA-SECURITY-DESIGN.md`
-- All Phase 0.2 operational/business-rule documents
-- Any engineering/project rules inside `Documentation/`
-
-Treat Phase 0.4 as the primary physical-schema/security design input.
-
-Treat `Documentation/TINDAHAN MODULE.txt` as the living product specification.
-
----
-
-# IMPORTANT — NEW CONFIRMED DECISIONS
-
-Before implementation, incorporate these final confirmed decisions into the relevant documentation.
-
-## Rider Calculation
-
-For each active/non-cancelled order:
-
-`Calculated Rider Amount = Internal DF Total + Final Customer Delivery Charge`
-
-Examples:
-
-| Internal DF | Customer Delivery Charge | Calculated Rider Amount |
-| ---: | ---: | ---: |
-| ₱10 | ₱15 | ₱25 |
-| ₱20 | ₱0 | ₱20 |
-| ₱10 | ₱35 | ₱45 |
-| ₱20 | ₱20 | ₱40 |
-
-Cancelled orders do NOT contribute to rider totals.
-
-Daily rider reconciliation:
-
-`SUM(active order calculated rider amounts) = Daily Calculated Rider Amount`
-
-Then:
-
-`Daily Calculated Rider Amount + Manual Daily Adjustment = Final Rider Amount`
-
-Manual adjustment may be positive or negative.
-
----
-
-## Guest Token Lifetime
-
-Guest order/chat authorization uses a separate high-entropy guest token.
-
-The readable order code is NOT an authorization secret.
-
-For V1:
-
-- Guest token is issued when an online guest order is successfully created.
-- Guest token remains valid for approximately 24 hours from `Order Created At`.
-- Guest chat expiry is based on order creation time.
-- Sending additional messages does NOT extend the token/chat lifetime.
-- No automated guest-token recovery is required for V1.
-- If the customer loses access/token, they may contact the admin using the human-readable order code through another channel.
-
-Do not build account-less recovery infrastructure in V1.
-
----
-
-## Payment Evidence Retention
-
-Payment evidence should remain private.
-
-V1 retention rule:
-
-- Payment evidence is retained for 30 days from order creation.
-- After 30 days it becomes eligible for deletion.
-- The order itself remains historically available.
-- Payment evidence must never be publicly readable.
-- Customer access is limited to the authorized guest window where appropriate.
-- Admin may access retained evidence while it still exists.
-
-Automatic cleanup does NOT have to be implemented in this exact phase unless already simple and safe to support.
-
-The schema/storage model should be capable of supporting this retention rule.
-
----
-
-# DOCUMENTATION UPDATE
-
-Before or alongside implementation:
-
-Update:
-
-`Documentation/TINDAHAN MODULE.txt`
-
-and/or the most appropriate Phase 0 documentation to capture the three confirmed decisions above.
-
-Prefer creating a small implementation decision record:
-
-`Documentation/MARKDOWN/PHASE-1.0-IMPLEMENTATION-FOUNDATION.md`
-
-This document should record:
-
-- Scope of Phase 1.0
-- Final rider formula
-- Guest-token lifetime rule
-- Payment-evidence retention rule
-- Which schema objects were actually implemented
-- Which Phase 0.4 proposals were intentionally deferred
-- Validation results
-- Next recommended implementation step
-
-All Markdown files must remain inside:
-
-`Documentation/MARKDOWN/`
-
----
-
-# IMPLEMENTATION PHILOSOPHY
-
-Do NOT implement the entire backend in one giant change.
-
-This phase should establish a clean Supabase foundation and a FIRST core migration.
-
-Prefer small, reviewable migrations.
-
-The implementation must remain aligned with the project engineering rules:
-
-- Simple
-- Maintainable
-- Explicit
-- No unnecessary abstractions
-- No speculative features
-- Preserve historical integrity
-- Secure guest access
-- Admin-only sensitive mutations
-- No permanent customer-account model in V1
-- No complex order-status machine
-- No inventory quantity system
-- No generalized promotions engine
-
----
-
-# PHASE 1.0 IMPLEMENTATION SCOPE
-
-Implement only the foundational database/schema layer necessary to establish the core data model.
-
-The intended first migration should focus on the safest core relational structures.
-
-Recommended initial scope:
-
-1. Supabase project/local structure if not already present
-2. Required extensions only if genuinely necessary
-3. `admin_profiles`
-4. `catalog_items`
-5. `published_menus`
-6. `published_menu_items`
-7. `orders`
-8. `order_items`
-9. `address_book_entries`
-10. `daily_rider_reconciliations`
-11. `store_settings`
-12. Core constraints
-13. Core indexes
-14. Foundational RLS enablement/policies where straightforward
-15. Type-safe schema validation/build checks where available
-
-Messaging/storage/trusted checkout may be deferred to later implementation phases if that produces a cleaner first migration.
-
-Do NOT force everything into Phase 1.0 merely because Phase 0.4 designed it.
-
----
-
-# SUPABASE PROJECT STRUCTURE
-
-If the repository does not yet contain the standard Supabase local project structure, initialize/configure it appropriately.
-
-Expected area may include:
-
-`supabase/`
-
-with migration/config structure.
-
-Do not modify the remote Supabase project unless explicitly required and already configured safely.
-
-Prefer generating local migration files first.
-
-Do not expose secrets.
-
-Never commit:
-
-- service-role secret
-- database password
-- private API credentials
-
-Environment files containing secrets must remain ignored.
-
----
-
-# MIGRATION STRATEGY
-
-Create a clear first migration.
-
-Prefer a timestamped Supabase migration filename.
-
-Do not split trivial mutually dependent objects unnecessarily, but do not create one uncontrolled mega-migration covering the entire future backend.
-
-The migration should be readable.
-
-Use comments sparingly where they explain non-obvious business rules.
-
----
-
-# MONEY
-
-Implement money using integer centavos according to Phase 0.4.
-
-Use a PostgreSQL integer type with sufficient range, preferably `bigint` where Phase 0.4 recommended it.
-
-Naming should consistently communicate units.
-
-Examples:
-
-- `price_centavos`
-- `internal_df_centavos`
-- `base_delivery_charge_centavos`
-- `far_area_charge_centavos`
-- `customer_delivery_charge_centavos`
-- `grand_total_centavos`
-- `calculated_rider_centavos`
-- `manual_adjustment_centavos`
-- `final_rider_centavos`
-
-Never use floating point for money.
-
----
-
-# TIMESTAMPS
-
-Use timezone-safe event timestamps.
-
-Prefer PostgreSQL `timestamptz`.
-
-Operational reporting interprets dates in:
-
-`Asia/Manila`
-
-Daily rider reconciliation should use a local business-date concept appropriate for Philippine reporting.
-
-Do not use UTC calendar boundaries for "Today's Orders" semantics.
-
----
-
-# CATEGORY / ENUM-LIKE VALUES
-
-Follow Phase 0.4's recommendation for categorical values.
-
-Prefer maintainable constraints.
-
-Examples include:
-
-Catalog category:
-- ULAM
-- DESSERTS
-- EXTRAS
-
-Order source:
-- ONLINE
-- MANUAL
-
-Payment method:
-- CASH
-- ONLINE_PAYMENT
-
-Payment verification:
-- NOT_VERIFIED
-- VERIFIED
-
-Avoid unnecessary PostgreSQL enum rigidity if the documented design recommended text + CHECK constraints.
-
----
-
-# ADMIN PROFILES
-
-Implement the minimal Supabase Auth-linked admin profile model from Phase 0.4.
-
-Do not add complex RBAC.
-
-V1 only needs a simple admin/owner boundary.
-
-Ensure:
-
-- References Auth user appropriately
-- Sensitive operational changes remain admin-only
-- Public guests cannot enumerate admin data
-
----
-
-# CATALOG ITEMS
-
-Implement reusable catalog records.
-
-Expected concepts include:
-
-- ID
-- Name
-- Category
-- Price centavos
-- Internal DF centavos
-- Photo reference/path
-- Archive/inactive behavior
-- Created timestamp
-- Updated timestamp
-
-Constraints should enforce sensible valid values.
-
-Avoid destructive deletion where historical references may exist.
-
----
-
-# PUBLISHED MENUS
-
-Implement menu records supporting:
-
-- At most one active menu
-- Activation
-- Expiry
-- Manual deactivation
-- Menu image
-- Historical survival
-
-Use the Phase 0.4 recommended enforcement strategy for one-active-menu behavior.
-
-If Phase 0.4 recommended a partial unique index or similar safe database-level enforcement, implement it carefully.
-
----
-
-# PUBLISHED MENU ITEMS
-
-Implement publication snapshots.
-
-They must preserve publication-time information such as:
-
-- Name
-- Category
-- Unit price
-- Internal DF
-- Image reference where appropriate
-- Sold-out state
-
-Catalog changes must not silently rewrite published snapshots.
-
-Do not cascade destructive catalog deletion into historical menu data.
-
----
-
-# ORDERS
-
-Implement the current editable order representation according to Phase 0.4.
-
-The schema should support:
-
-- Order code
-- ONLINE / MANUAL source
-- Nullable published-menu relation
-- Customer name
-- Address snapshot
-- Location classification/input needed for delivery explanation
-- Payment method
-- Online payment verification
-- Verification timestamp
-- Internal DF total
-- Base delivery charge
-- Far-area charge
-- Final customer delivery charge
-- Food/order subtotal
-- Grand total
-- Calculated rider amount
-- Cancellation state
-- Cancellation metadata
-- Created At
-- Last Edited At
-- Cancelled At
-- Guest chat expiry where applicable
-- Original immutable snapshot representation
-
-Use the Phase 0.4 design rather than inventing a new model.
-
----
-
-# ORIGINAL SNAPSHOT
-
-Follow Phase 0.4's selected approach.
-
-If Phase 0.4 selected:
-
-`orders.original_snapshot jsonb`
-
-then implement it as a versioned immutable-at-application-level snapshot.
-
-The snapshot should contain the original transaction state including original order-item information.
-
-Include a small snapshot schema/version identifier if Phase 0.4 recommended one.
-
-Do NOT create event sourcing.
-
-Do NOT create edit-by-edit revision tables.
-
-Do NOT automatically rewrite `original_snapshot` during later order edits.
-
----
-
-# ORDER ITEMS
-
-Implement current editable order items.
-
-Support:
-
-- Online items tied to published menu records when applicable
-- Manual items without catalog/menu references
-- Name/category transaction snapshots
-- Quantity
-- Unit price centavos
-- Internal DF per unit
-- Derived/persisted item subtotal according to Phase 0.4 design
-- Internal DF contribution
-- Created/updated timestamps
-
-Quantity must be positive.
-
-Money values should have appropriate non-negative checks.
-
----
-
-# RIDER CALCULATION FIELD
-
-The order's calculated rider amount follows the newly confirmed business rule:
-
-`calculated_rider_centavos = internal_df_total_centavos + customer_delivery_charge_centavos`
-
-This applies to the current editable order values.
-
-Cancelled orders remain stored but are excluded from daily calculated rider totals.
-
-Do not introduce per-order manual rider adjustment.
-
-V1 manual rider adjustment is DAILY only.
-
-If this value is stored rather than dynamically derived, ensure application/database design keeps it consistent.
-
-Use Phase 0.4's recommended persisted-vs-derived strategy.
-
----
-
-# DAILY RIDER RECONCILIATION
-
-Implement the daily reconciliation representation.
-
-It must support:
-
-- Business date
-- Calculated rider total
-- Manual adjustment
-- Final rider amount
-- Last updated
-- Updated by/admin where appropriate
-
-Conceptual formula:
-
-`Final Rider Amount = Calculated Rider Amount + Manual Adjustment`
-
-Manual adjustment may be:
-
-- Positive
-- Zero
-- Negative
-
-Avoid constraints that prohibit negative adjustment values.
-
-The calculated rider total itself should not become an arbitrary manual number if it is meant to originate from active orders.
-
-Document whether it is cached/persisted versus recomputed according to the Phase 0.4 decision.
-
----
-
-# CANCELLATION
-
-Implement minimal reversible cancellation fields.
-
-Requirements:
-
-- Admin-only mutation
-- Optional reason
-- Cancelled At
-- Restoration support
-- Cancelled orders remain queryable
-- Cancelled orders excluded from active totals
-
-Do not add restaurant workflow statuses.
-
----
-
-# PAYMENT VERIFICATION
-
+Phase 2.9 Admin Messages is implemented and locally validated.
+Do NOT begin Phase 2.10 Settings yet.
+This task is a focused usability/polish pass based on real user testing.
+
+USER-REPORTED ISSUES
+The following issues were observed during actual use:
+New message replies do not appear immediately.
+The browser sometimes needs to be refreshed/restarted before the reply appears.
+Customer and admin messaging should feel more familiar, similar to common Facebook Messenger-style conversation UX.
+Some cards/bubbles have poor contrast:
+light backgrounds combined with white/light text make content very difficult to read.
+The admin dashboard still visually treats some already-implemented modules as inactive/unfinished.
+Specifically:
+MANUAL ORDER
+ADDRESS BOOK
+MESSAGE
+These are implemented and should visually match the other active modules.
+
+OVERALL GOAL
+Improve everyday usability without changing core business rules.
 Implement:
-
-- NOT_VERIFIED
-- VERIFIED
-
-for ONLINE PAYMENT.
-
-CASH should not require online verification semantics.
-
-Support:
-
-- Reversal from VERIFIED → NOT_VERIFIED
-- `verified_at`
-
-Avoid complex payment entities.
-
----
-
-# ADDRESS BOOK
-
-Implement independent admin-managed address-book records.
-
-Support:
-
-- Customer name
-- Exact address
-- Search
-- Editing
-- Archive/inactive behavior if Phase 0.4 recommended it
-
-Historical order addresses remain independent snapshots.
-
----
-
-# STORE SETTINGS
-
-Implement the explicit singleton settings model recommended by Phase 0.4.
-
-At minimum support the confirmed current settings/model needs:
-
-- Store/carenderia name
-- Logo reference/path
-- Font-size preference
-- Internal DF qualification threshold
-- Base delivery charge below threshold
-- Far-area charge
-- Nearby/promotional area representation according to Phase 0.4
-
-Do not build a generic key/value configuration framework unless Phase 0.4 explicitly selected it.
-
-Seed/default values may reflect current confirmed business rules if appropriate:
-
-- DF threshold = ₱20
-- Base charge = ₱15
-- Far-area charge = ₱20
-
-Represent these in centavos.
-
-Nearby areas:
-
-- Marycris Complex
-- Wellington Place
-- Elliston Place
-
-Keep the implementation understandable and editable later.
-
----
-
-# ORDER CODE
-
-Implement the database uniqueness requirement.
-
-If generating actual codes is deferred to trusted checkout, that is acceptable.
-
-The schema must at least support:
-
-- Stable code
-- Unique constraint
-- Case-normalized convention if appropriate
-
-Do not expose database primary keys as the customer-facing code.
-
----
-
-# GUEST TOKEN
-
-Do not use order code as authorization.
-
-If the core `orders` model needs fields supporting later guest access, implement only what Phase 0.4 designed.
-
-Guest token requirements:
-
-- High entropy
-- 24-hour lifetime from order creation
-- No automatic recovery in V1
-
-Prefer storing a secure token hash rather than plaintext token if Phase 0.4 recommended that design.
-
-If guest-token implementation belongs to the trusted-checkout phase rather than this initial migration, document the deferral rather than improvising.
-
----
-
-# RLS
-
-Enable RLS on exposed application tables where appropriate.
-
-Apply foundational policies that are safe and clearly defined.
-
-Do NOT grant anonymous clients broad direct access to:
-
-- Orders
-- Order items
-- Rider reconciliation
-- Address book
-- Store mutation
-- Admin profiles
-
-Public/anonymous direct reads may be appropriate for safely exposed active menu data, subject to Phase 0.4 design.
-
-Trusted order creation should NOT be implemented as unrestricted anonymous direct table inserts.
-
-If trusted checkout RPC/Edge Function is deferred, keep sensitive guest writes denied until that secure path exists.
-
-Security should fail closed.
-
----
-
-# GRANTS
-
-Review database grants as part of security.
-
-Do not assume RLS alone is enough.
-
-Follow the least-privilege strategy documented in Phase 0.4.
-
-Avoid granting anonymous mutation access to internal tables.
-
----
-
-# INDEXES
-
-Implement only indexes justified by current queries and constraints.
-
-Likely examples from Phase 0.4:
-
-- Order code uniqueness
-- Orders created timestamp
-- Active menu access
-- Published menu item lookup
-- Daily reconciliation date
-- Address-book search support
-- Relevant FK indexes
-
-Avoid speculative indexes.
-
----
-
-# FOREIGN KEY DELETE BEHAVIOR
-
-Follow Phase 0.4 recommendations carefully.
-
-Historical records must survive.
-
-Avoid cascade behavior that could erase:
-
-- Published menu history
-- Orders
-- Order items
-- Payment/order history
-
-Use `RESTRICT`, `SET NULL`, or archive semantics where appropriate.
-
-Use CASCADE only where deletion of the parent is itself controlled and the children have no independent/historical meaning.
-
----
-
-# UPDATED_AT HANDLING
-
-If implementing automatic `updated_at` behavior, keep it simple and consistent.
-
-A small reusable database function/trigger may be acceptable if it reduces repeated application mistakes.
-
-Do not add trigger complexity beyond concrete needs.
-
-Document any trigger introduced.
-
----
-
-# NO MESSAGING IMPLEMENTATION YET UNLESS REQUIRED
-
-Prefer deferring:
-
-- Conversations
-- Messages
-- Message attachments
-- Payment-evidence Storage
-- Signed URL handling
-
-to a later dedicated implementation phase.
-
-The core order/payment fields may support future messaging, but do not overload Phase 1.0 unnecessarily.
-
-If Phase 0.4 dependencies require a minimal conversation table now, explain why.
-
----
-
-# NO TRUSTED CHECKOUT IMPLEMENTATION YET UNLESS CLEANLY SEPARABLE
-
-This phase may prepare the schema for trusted checkout.
-
-Prefer a later dedicated phase for:
-
-- Checkout Edge Function
-- Transactional RPC
-- Guest token issuance
-- Server-authoritative delivery calculation
-- Snapshot construction
-
-unless Phase 0.4 explicitly makes a small foundational RPC necessary for schema correctness.
-
-Do not mix too many concerns into the first migration.
-
----
-
-# TYPES / LOCAL DEVELOPMENT
-
-If Supabase CLI/type generation is already configured and safe to use locally:
-
-- Generate or validate database types after migrations if appropriate.
-
-Do not introduce application integration yet unless necessary for validation.
-
-The frontend should remain functionally unchanged.
-
----
-
-# MIGRATION VALIDATION
-
-Validate the migration locally where possible.
-
-At minimum check:
-
-- Migration parses/applies cleanly
-- Constraints behave as intended
-- Unique active-menu enforcement works
-- Invalid category/payment/source values fail
-- Money checks work
-- Quantity checks work
-- Order-code uniqueness works
-- Singleton settings enforcement works
-- RLS is enabled where intended
-- Anonymous access is not accidentally broad
-
-If Supabase local environment is unavailable, clearly report which validation could not be executed.
-
-Do not pretend remote state was tested if it was not.
-
----
-
-# TEST DATA
-
-Do NOT populate production-like persistent data unnecessarily.
-
-If migration validation requires temporary local test records, keep them in a reproducible local/test context.
-
-Do not insert personal customer data.
-
----
-
-# DOCUMENTATION OUTPUT
-
+Realtime message updates
+Familiar modern chat UX
+Application-wide contrast/readability fixes where needed
+Correct admin dashboard active/inactive module states
+Do not redesign backend order logic.
+Do not weaken security.
+Do not begin Settings.
+
+PART 1 — REALTIME MESSAGING
+Messaging should update without requiring a browser refresh.
+Both directions matter:
+Customer sends → admin sees it quickly
+Admin replies → customer sees it quickly
+
+REALTIME STRATEGY
+Use Supabase Realtime where appropriate.
+Do NOT replace the existing secure REST/Edge/RPC/query flows.
+The existing backend/API remains the source of truth.
+Preferred architecture:
+Realtime event
+→ relevant TanStack Query invalidation/refetch
+→ authoritative API response
+→ UI update
+Do NOT build a second message-state system directly from raw realtime payloads unless there is a compelling reason.
+
+WHY INVALIDATION/REFETCH IS PREFERRED
+Existing APIs already enforce:
+guest-token authorization
+active-admin authorization
+cross-order isolation
+private attachment access
+retention rules
+pagination
+payment state
+Therefore realtime should primarily signal:
+"Something changed."
+Then refetch through the existing secure query/API layer.
+
+REALTIME MESSAGE EVENTS
+Subscribe to relevant message changes.
+At minimum:
+new message inserted
+reaction changes if needed
+payment verification change if useful
+For a conversation currently open:
+A new message should appear automatically within a reasonable realtime delay.
+No page refresh should be required.
+
+ADMIN INBOX REALTIME
+Admin conversation list should also refresh when:
+a customer sends a new message
+an admin reply changes latest-message context
+If a new customer message arrives:
+conversation should update
+latest-message preview/time should update
+ordering should reflect latest activity
+Do not invent unread counts unless backend already supports them.
+
+CUSTOMER CHAT REALTIME
+Customer chat should automatically refresh when:
+admin sends a reply
+payment verification status changes
+Customer should not need to reload the browser to see the response.
+
+SUBSCRIPTION SCOPE
+Keep subscriptions narrowly scoped.
+Admin inbox:
+subscribe only to tables/events needed to know messaging activity changed.
+Open admin conversation:
+subscribe to that conversation/order where practical.
+Customer:
+subscribe only to their own relevant order/message activity if safely possible.
+Do not create broad uncontrolled subscriptions to all sensitive tables in client code.
+
+AUTHORIZATION & REALTIME
+Do NOT assume realtime subscription itself is authorization.
+Existing backend/API authorization remains authoritative.
+If realtime payload exposure would reveal sensitive cross-order data, do not subscribe directly to unsafe payloads.
+Prefer event notification + secure refetch.
+Inspect current RLS/Reatime behavior carefully.
+
+FALLBACK
+Realtime should improve UX, not become the only update mechanism.
+Keep:
+refetch on window focus
+manual refresh if currently present
+reasonable background polling only if still useful
+But reduce unnecessary polling if realtime makes it redundant.
+Do not poll every second.
+
+CONNECTION RECOVERY
+Handle:
+temporary Wi-Fi loss
+mobile browser background/resume
+realtime disconnect/reconnect
+After reconnect or window focus:
+invalidate/refetch current message data.
+Do not assume every realtime event was received.
+
+TEST REALTIME
+Validate:
+Open customer chat in one browser/tab.
+Open admin conversation in another.
+Customer sends message.
+Admin sees it without refresh.
+Admin replies.
+Customer sees reply without refresh.
+Admin verifies payment.
+Customer sees verification change without refresh.
+Temporarily disconnect/reconnect network if practical.
+Confirm refetch restores consistent state.
+
+PART 2 — FAMILIAR MESSENGER-STYLE CHAT UX
+The goal is NOT to copy Facebook branding or reproduce Messenger pixel-for-pixel.
+The goal is to use familiar interaction patterns that users already understand.
+
+CHAT LAYOUT
+Use a familiar mobile messaging layout:
+Top:
+conversation header
+Middle:
+scrollable message thread
+Bottom:
+composer
+attachment button where appropriate
+SEND button
+Keep composer visually attached to the bottom chat area.
+
+MESSAGE BUBBLES
+Use clear left/right alignment.
+Suggested pattern:
+Customer-facing chat:
+customer's own messages aligned right
+admin/store messages aligned left
+Admin chat:
+admin's own messages aligned right
+customer messages aligned left
+Use consistent message bubble semantics.
+
+BUBBLE VISUAL STYLE
+Do NOT make message bubbles heavily glassmorphic.
+Message readability is more important.
+Preferred:
+Own message:
+solid/darker or strongly tinted bubble
+high-contrast light text
+Other sender:
+light/neutral bubble
+dark text
+Avoid:
+light translucent bubble
++
+white text
+This is currently causing readability problems.
+
+MESSAGE CONTENT
+Inside bubble show:
+message body
+attachment if applicable
+small timestamp
+reactions if relevant
+Sender distinction should also be available semantically/textually where useful.
+Do not rely only on color.
+
+LONG MESSAGES
+Handle:
+long words
+URLs
+multiple lines
+long Filipino/English mixed messages
+No horizontal overflow.
+Use safe wrapping.
+
+IMAGE MESSAGES
+Image attachments should visually behave like chat attachments:
+thumbnail/card
+tap to enlarge
+maintain aspect ratio
+clear PAYMENT RECEIPT label where applicable
+Do not bury payment evidence inside generic chat cards.
+
+CHAT HEADER
+Keep the header compact.
+Admin conversation may show:
+Customer name
+Order code
+payment status
+guest-chat expiry indicator
+Customer conversation may show:
+Store/admin label
+order code
+relevant payment state
+Do not overload the header.
+
+COMPOSER
+Use a familiar mobile composer:
+multiline text input
+attachment button
+send button
+Keep touch targets large.
+Composer must remain reachable above the mobile keyboard.
+Do not use brittle fixed heights.
+
+AUTO-SCROLL
+Initial conversation:
+scroll near latest message.
+After sending:
+show the newly sent message.
+When receiving new message:
+auto-scroll only if user is already near bottom.
+If user is reading older history:
+do not forcibly jump them to bottom.
+If practical show:
+New message
+or a small jump-to-bottom affordance.
+Keep implementation simple.
+
+PART 3 — CONTRAST / READABILITY AUDIT
+Perform a targeted contrast audit across the implemented application.
+The user specifically reported white/light text rendered on light cards.
+Fix actual problematic cases.
+
+CONTRAST RULE
+Establish a simple rule:
+Dark/glass surface
+→ light text
+Light surface
+→ dark text
+Do not rely on parent/global text color when component surface changes.
+Every reusable card/bubble/status surface should explicitly inherit/use an appropriate semantic foreground token.
+
+MESSAGES PRIORITY
+Audit first:
+customer message bubbles
+admin message bubbles
+reply composer
+payment receipt cards
+verification cards
+conversation list cards
+empty/error states
+image viewer labels
+This is the highest-priority known issue.
+
+APP-WIDE AUDIT
+Also inspect current implemented admin/customer screens for obvious low contrast:
+Admin dashboard
+Today’s Orders
+ULAM PHOTOS
+ULAM POST
+Manual Order
+Address Book
+Customer menu/cart
+Checkout
+Receipt
+Do NOT redesign all screens.
+Fix only actual readability problems discovered.
+
+DESIGN TOKENS
+Prefer solving repeated contrast bugs through semantic design tokens/classes rather than isolated hard-coded fixes.
+Possible conceptual tokens:
+surface-dark / foreground-light
+surface-light / foreground-dark
+muted foreground
+semantic success/warning/error foreground
+Use the current Tailwind/design-system approach.
+Do not create excessive token complexity.
+
+WCAG-MINDED REVIEW
+Aim for strong practical contrast.
+Especially review:
+body text
+small timestamps
+helper text
+disabled buttons
+badges
+selected/unselected states
+Do not rely on low-opacity white text on translucent light backgrounds.
+
+GLASSMORPHISM PRINCIPLE
+Preserve:
+"Glassmorphism is the visual language of TINDAHAN, not the purpose of TINDAHAN."
+If glass effects hurt readability:
+reduce/remove them for that component.
+Message bubbles in particular should prioritize clarity over glass effects.
+
+PART 4 — ADMIN DASHBOARD MODULE STATE CLEANUP
+Review the current admin dashboard.
+Current implemented functional modules include:
+ULAM POST
+ULAM PHOTOS
+MESSAGE
+ADDRESS BOOK
+MANUAL ORDER
+TOTAL ORDERS FOR TODAY
+These should all use the active/implemented visual treatment.
+
+CURRENT REPORTED PROBLEM
+These implemented modules still appear with the inactive/unfinished styling:
+MANUAL ORDER
+ADDRESS BOOK
+MESSAGE
+Fix them.
+
+SETTINGS
+SETTINGS is not yet implemented.
+It should remain visually distinct as unfinished/coming soon/disabled according to current design.
+Do not activate Settings prematurely.
+
+ACTIVE VS INACTIVE SEMANTICS
+Do not rely only on color.
+Implemented module:
+active color treatment
+normal cursor/touch behavior
+accessible button/link
+navigation works
+Unimplemented module:
+disabled or clearly placeholder behavior
+explicit visual/text state such as:
+Coming soon
+if appropriate
+not misleadingly clickable
+
+DASHBOARD DATA MODEL
+Inspect whether module availability is hard-coded in multiple places.
+Prefer one simple source of truth for module metadata.
+Example conceptually:
+label
+icon
+route
+implemented/enabled state
+Do not over-engineer a dynamic plugin system.
+Just remove stale duplicated state.
+
+ADMIN DASHBOARD IMPLEMENTED STATE
+After this pass:
+ULAM POST → Active
+ULAM PHOTOS → Active
+MESSAGE → Active
+ADDRESS BOOK → Active
+MANUAL ORDER → Active
+TOTAL ORDERS FOR TODAY → Active
+SETTINGS → Inactive/coming later
+If another dashboard action exists, determine state from actual implementation.
+
+PART 5 — MOBILE VALIDATION
+This polish pass was triggered by real usage.
+Test mobile behavior thoroughly.
+Use:
+npm run dev:mobile
+If physical phone is available, prioritize actual device validation.
+
+REAL PHONE TEST CASES
+Customer messaging
+Open customer message screen
+Send message
+Receive admin reply without refresh
+Confirm readable bubbles
+Open image
+Upload receipt if appropriate
+Keyboard behavior
+Back navigation
+Admin messages
+Open MESSAGE
+Receive customer message realtime
+Open conversation
+Reply
+Customer sees reply realtime
+Verify payment
+Customer sees status update
+Image/payment receipt readable
+Long thread scrolling
+Dashboard
+Confirm active visual state for:
+ULAM POST
+ULAM PHOTOS
+MESSAGE
+ADDRESS BOOK
+MANUAL ORDER
+TOTAL ORDERS FOR TODAY
+Confirm Settings remains inactive.
+
+RESPONSIVE REVIEW
+Review at:
+320px
+360px
+390px
+430px
+desktop
+320px Extra Large text
+Test:
+short conversation
+long conversation
+long message
+image message
+payment receipt
+realtime incoming message
+composer with keyboard-sized viewport
+dashboard active/inactive states
+No horizontal overflow.
+
+ERROR BOUNDARY
+Preserve the global error boundary added during the Mobile Admin Stability Debug Pass.
+Realtime errors must not cause a blank screen.
+Subscription failure should degrade gracefully to normal refetch/manual refresh behavior.
+
+SECURITY REVIEW
+Confirm:
+Realtime does not expose messages across orders
+Guest cannot access another order
+Admin route still requires active admin
+No service-role key in frontend
+Private Storage remains private
+Payment evidence remains private
+Signed URLs remain short-lived
+No guest token in URL
+No broad sensitive table subscription leaks private payloads
+If direct Realtime table subscription creates authorization concerns, use the safest architecture available even if that means a narrower event/refetch design.
+
+FRONTEND TESTS
+Add/update tests covering:
+Realtime
+incoming message event invalidates/refetches conversation
+admin inbox refreshes on new activity
+customer chat refreshes on admin reply
+payment verification event refreshes customer state
+subscription cleanup occurs on unmount/order change
+reconnect/focus refetch behavior
+Mock realtime where appropriate.
+Messaging UI
+own message alignment
+other sender alignment
+high-contrast semantic classes
+long message wrapping
+composer
+image message
+payment evidence label
+Dashboard
+ULAM POST active
+ULAM PHOTOS active
+MESSAGE active
+ADDRESS BOOK active
+MANUAL ORDER active
+TODAY’S ORDERS active
+SETTINGS inactive
+Contrast
+Where practical, test correct semantic class/token use rather than brittle exact visual snapshots.
+
+LOCAL END-TO-END VALIDATION
+Run a real local two-session workflow.
+Suggested:
+Browser/session A:
+customer
+Browser/session B:
+admin
+Create customer order
+Open customer messages
+Open matching admin conversation
+Customer sends "Hello"
+Confirm admin sees it without refresh
+Admin replies "Hi"
+Confirm customer sees it without refresh
+Customer sends image/payment evidence
+Confirm admin sees it without refresh
+Admin verifies payment
+Confirm customer state updates without refresh
+Reverse verification
+Confirm update returns
+Confirm message bubbles remain readable throughout
+Use fake data only.
+Clean up test fixtures afterward.
+
+BACKEND CHANGES
+Do not modify backend unless realtime support requires a concrete small change.
+If Supabase Realtime publication/configuration changes are required:
+scope them narrowly
+preserve RLS
+verify no cross-order data exposure
+add security validation
+document exactly what tables/events are enabled
+Do not make sensitive tables publicly readable just for realtime.
+
+DOCUMENTATION
 Create:
+Documentation/MARKDOWN/PHASE-2.9.1-REALTIME-MESSAGING-UI-POLISH.md
+Include:
+Purpose
+User-reported issues
+Realtime strategy
+Why query invalidation/refetch remains authoritative
+Admin inbox subscription behavior
+Open conversation subscription behavior
+Customer subscription behavior
+Reconnect/fallback behavior
+Messaging UI redesign
+Bubble semantics
+Composer behavior
+Scroll behavior
+Contrast audit
+Design token changes
+Dashboard active/inactive cleanup
+Accessibility
+Security review
+Files changed
+Frontend tests
+Backend/security changes if any
+Local realtime E2E
+Physical-phone validation
+Risks/limitations
+Remaining work
+Recommended next phase
 
-`Documentation/MARKDOWN/PHASE-1.0-IMPLEMENTATION-FOUNDATION.md`
+NEXT PHASE
+Only after this pass is complete, recommend:
+Phase 2.10 — Settings
+Do not begin automatically.
 
-Document:
-
-1. Purpose
-2. Preconditions/read documents
-3. Final resolved implementation rules
-4. Files created/changed
-5. Migration scope
-6. Implemented tables
-7. Money representation
-8. Timestamp/business-date handling
-9. Snapshot implementation
-10. Cancellation/payment representation
-11. Rider calculation/reconciliation representation
-12. Settings representation
-13. RLS/grants implemented
-14. Indexes/constraints
-15. Intentionally deferred components
-16. Validation performed
-17. Validation limitations
-18. Risks/notes
-19. Recommended next phase
-
----
-
-# EXPECTED NEXT PHASE
-
-If Phase 1.0 succeeds, likely next work should be split into focused phases such as:
-
-**Phase 1.1 — Messaging & Private Storage**
-and/or
-**Phase 1.2 — Trusted Checkout RPC / Edge Function**
-and/or
-**Phase 1.3 — Admin Auth & Application Integration**
-
-Do not automatically begin them.
-
-Recommend the most logical next step after inspecting the implemented foundation.
-
----
-
-# FINAL VALIDATION
-
-Before stopping:
-
-1. Confirm the migration file(s) exist.
-2. Confirm the implementation matches Phase 0.4.
-3. Confirm rider formula uses:
-   `Internal DF + Customer Delivery Charge`.
-4. Confirm daily manual rider adjustment supports positive/negative values.
-5. Confirm money uses centavos/integer representation.
-6. Confirm event timestamps are timezone-safe.
-7. Confirm the order code is not used as an auth secret.
-8. Confirm guest security is not weakened.
-9. Confirm cancelled orders remain stored.
-10. Confirm original snapshots are preserved.
-11. Confirm CASH does not require online verification.
-12. Confirm RLS fails closed for sensitive anonymous operations.
-13. Confirm no secrets were committed.
-14. Confirm frontend behavior remains unchanged.
-15. Run formatting/lint/build checks relevant to changed files.
-16. Report all migration/schema validation results.
-17. Report any deviations from Phase 0.4.
-18. Recommend the next implementation phase.
-19. Stop.
-
-Do not continue automatically.
-
+FINAL CHECKLIST
+Before stopping confirm:
+Customer receives admin reply without browser refresh.
+Admin receives customer message without browser refresh.
+Admin inbox updates on new conversation activity.
+Payment verification changes refresh customer state.
+Realtime uses secure scoped subscriptions.
+Existing API remains authoritative.
+Realtime disconnect has safe fallback.
+Subscriptions clean up correctly.
+Chat layout follows familiar messenger-style interaction.
+Own/other messages visually distinct.
+Message bubbles have strong readable contrast.
+Light surfaces use dark readable text.
+Dark surfaces use light readable text.
+No known white-on-light message card remains.
+Long messages wrap safely.
+Mobile composer remains usable.
+Image/payment evidence UI remains secure.
+ULAM POST dashboard action appears active.
+ULAM PHOTOS appears active.
+MESSAGE appears active.
+ADDRESS BOOK appears active.
+MANUAL ORDER appears active.
+TOTAL ORDERS FOR TODAY appears active.
+SETTINGS remains inactive/unimplemented.
+Active/inactive state is not communicated by color alone.
+Global error boundary remains functional.
+320px has no overflow.
+Extra Large text works.
+Frontend tests pass.
+Backend/security tests pass if changed.
+ESLint passes.
+TypeScript/build passes.
+Prettier passes.
+Local realtime two-session E2E passes.
+Physical-phone test completed if available.
+No unrelated feature work added.
+Recommend Phase 2.10.
+Stop.
 The goal is:
+Make TINDAHAN messaging feel instant and familiar, make every message easy to read, and make the admin dashboard accurately show which modules are already ready to use.
 
-**Implement the smallest secure database foundation that accurately represents the business rules, validate it, review it, then continue incrementally.**
+
